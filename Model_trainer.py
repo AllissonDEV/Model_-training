@@ -1,6 +1,8 @@
 
 import matplotlib.pyplot as plt
+import tensorflow as tf
 import numpy as np
+from tensorflow.keras.applications import EfficientNetB0
 from sklearn.metrics import classification_report, confusion_matrix
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.applications.inception_resnet_v2 import InceptionResNetV2, preprocess_input
@@ -14,8 +16,8 @@ TRAIN_DIR = 'Samples/Train'
 VALIDATION_DIR = 'Samples/Test'
 
 SEED = 42
-IMG_SIZE = (128, 128)
-BATCH_SIZE = 32
+IMG_SIZE = (224, 224)
+BATCH_SIZE = 64
 EPOCHS = 50
 
 CLASS_NAMES = ...
@@ -23,11 +25,11 @@ CLASS_NAMES = ...
 # Generator para o treinamento
 train_datagen = ImageDataGenerator(
     preprocessing_function=preprocess_input,
-    rotation_range=20,           # rotação aleatória
-    width_shift_range=0.2,       # Deslocamento horizontal
-    height_shift_range=0.2,      # Deslocamento vertical
-    shear_range=0.2,             # Cisalhamento
-    zoom_range=0.2,              # zoom
+    rotation_range=15,           # rotação aleatória
+    width_shift_range=0.1,       # Deslocamento horizontal
+    height_shift_range=0.1,      # Deslocamento vertical
+    shear_range=0.1,             # Cisalhamento
+    zoom_range=0.1,              # zoom
     horizontal_flip=True,        # Flip horizontal
     fill_mode='nearest',         # Método de preenchimento
     validation_split=0.2         # 20% para validação
@@ -98,53 +100,32 @@ except Exception as e:
     print(f"Erro ao carregar os dados: {e}")
 
 
-# #Visualizar algumas imagens de exemplo do conjunto de treinamento
-# def show_batch(image_batch, label_batch):
-#     plt.figure(figsize=(15, 15))
-#     for n in range(min(25, len(image_batch))):
-#         ax = plt.subplot(5, 5, n + 1)
-#         # Normalizar as imagens para exibição
-#         img = (image_batch[n] + 1) / 2
-#         plt.imshow(img)
-#         if label_batch is not None:
-#             plt.title(classes[np.argmax(label_batch[n])])
-#         plt.axis('off')
-#     plt.tight_layout()
-#     plt.show()
-
-# Tentar obter e mostrar um batch de imagens
-# try:
-#     image_batch, label_batch = next(iter(train_generator))
-#     show_batch(image_batch, label_batch)
-#     print("Exemplos de imagens do conjunto de treinamento")
-# except Exception as e:
-#     print(f"Erro ao visualizar imagens: {e}")
-
 
 
 
 #função para criar o modelo
 def create_model():
-    base_model = InceptionResNetV2(
+
+    base_model = EfficientNetB0(
         weights='imagenet',
         include_top=False,
         input_shape=(IMG_SIZE[0], IMG_SIZE[1], 3)
     )
+    base_model.trainable = False  # Congela o backbone no início
 
-    base_model.trainable = False
+    inputs = tf.keras.Input(shape=(IMG_SIZE[0], IMG_SIZE[1], 3))
+    x = base_model(inputs, training=False)
+    x = GlobalAveragePooling2D()(x)
+    x = Dense(256, activation='relu')(x)
+    x = Dropout(0.3)(x)
+    x = Dense(128, activation='relu')(x)
+    x = Dropout(0.2)(x)
+    outputs = Dense(num_classes, activation='softmax')(x)
 
-    model = Sequential([
-        base_model,
-        GlobalAveragePooling2D(),
-        Dense(512, activation='relu'),
-        Dropout(0.5),
-        Dense(256, activation='relu'),
-        Dropout(0.3),
-        Dense(num_classes, activation='softmax')
-    ])
+    model = Model(inputs, outputs)
 
     model.compile(
-        optimizer=Adam(learning_rate=0.0001),
+        optimizer=Adam(learning_rate=0.0003),
         loss='categorical_crossentropy',
         metrics=['accuracy']
     )
@@ -152,8 +133,6 @@ def create_model():
     return model
 
 
-
-#criar modelo
 try:
     model = create_model()
     model.summary()
@@ -161,7 +140,10 @@ except Exception as e:
     print(f'Erro ao criar modelo: {e}')
 
 
-# treianmento do modelo e callbacks para salvar o modelo ou parar se não melhorar
+
+
+
+#callbacks para salvar o modelo ou parar se não melhorar
 
 callbacks = [
     ModelCheckpoint(
@@ -178,8 +160,6 @@ callbacks = [
     )
 ]
 
-
-#treinar modelo
 
 try:
     history = model.fit(
