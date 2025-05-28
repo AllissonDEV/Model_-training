@@ -1,43 +1,40 @@
-
 import matplotlib.pyplot as plt
 import tensorflow as tf
 import numpy as np
 from tensorflow.keras.applications import EfficientNetB0
 from sklearn.metrics import classification_report, confusion_matrix
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.applications.inception_resnet_v2 import InceptionResNetV2, preprocess_input
-from tensorflow.keras.layers import Dense, Flatten, Dropout, GlobalAveragePooling2D
-from tensorflow.keras.models import Model, Sequential, load_model
+from tensorflow.keras.applications.inception_resnet_v2 import preprocess_input
+from tensorflow.keras.layers import Dense, Dropout, GlobalAveragePooling2D
+from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
 import seaborn as sns
+
+# Diretórios
 DATA_SET_DIR = 'Samples'
 TRAIN_DIR = 'Samples/Train'
 VALIDATION_DIR = 'Samples/Test'
 
+# Hiperparâmetros
 SEED = 42
 IMG_SIZE = (224, 224)
 BATCH_SIZE = 64
 EPOCHS = 50
 
-CLASS_NAMES = ...
-
-# Generator para o treinamento
+# Generators de imagem com aumento de dados
 train_datagen = ImageDataGenerator(
     preprocessing_function=preprocess_input,
-    rotation_range=15,           # rotação aleatória
-    width_shift_range=0.1,       # Deslocamento horizontal
-    height_shift_range=0.1,      # Deslocamento vertical
-    shear_range=0.1,             # Cisalhamento
-    zoom_range=0.1,              # zoom
-    horizontal_flip=True,        # Flip horizontal
-    fill_mode='nearest',         # Método de preenchimento
-    validation_split=0.2         # 20% para validação
+    rotation_range=15,
+    width_shift_range=0.1,
+    height_shift_range=0.1,
+    shear_range=0.1,
+    zoom_range=0.1,
+    horizontal_flip=True,
+    fill_mode='nearest',
+    validation_split=0.2
 )
 
-
-
-# Generator para a validação e teste
 val_datagen = ImageDataGenerator(
     preprocessing_function=preprocess_input,
     validation_split=0.2
@@ -47,9 +44,8 @@ test_datagen = ImageDataGenerator(
     preprocessing_function=preprocess_input
 )
 
-# Criação dos geradores de fluxo de dados
+# Geradores de dados
 try:
-    # Generator para parte de treinamento
     train_generator = train_datagen.flow_from_directory(
         TRAIN_DIR,
         target_size=IMG_SIZE,
@@ -60,7 +56,6 @@ try:
         subset='training'
     )
 
-    # Generator para parte de validação
     validation_generator = val_datagen.flow_from_directory(
         TRAIN_DIR,
         target_size=IMG_SIZE,
@@ -71,7 +66,6 @@ try:
         subset='validation'
     )
 
-    # Generator para conjunto de teste
     test_generator = test_datagen.flow_from_directory(
         VALIDATION_DIR,
         target_size=IMG_SIZE,
@@ -81,12 +75,10 @@ try:
         seed=SEED
     )
 
-    # Obter informações sobre os conjuntos de dados
     num_train_samples = train_generator.samples
     num_validation_samples = validation_generator.samples
     num_test_samples = test_generator.samples
 
-    # Lista de classes (letras do alfabeto em Libras)
     classes = list(train_generator.class_indices.keys())
     num_classes = len(classes)
 
@@ -99,19 +91,14 @@ try:
 except Exception as e:
     print(f"Erro ao carregar os dados: {e}")
 
-
-
-
-
-#função para criar o modelo
+# Função para criar o modelo
 def create_model():
-
     base_model = EfficientNetB0(
         weights='imagenet',
         include_top=False,
         input_shape=(IMG_SIZE[0], IMG_SIZE[1], 3)
     )
-    base_model.trainable = False  # Congela o backbone no início
+    base_model.trainable = False
 
     inputs = tf.keras.Input(shape=(IMG_SIZE[0], IMG_SIZE[1], 3))
     x = base_model(inputs, training=False)
@@ -132,19 +119,14 @@ def create_model():
 
     return model
 
-
+# Criar modelo
 try:
     model = create_model()
     model.summary()
 except Exception as e:
     print(f'Erro ao criar modelo: {e}')
 
-
-
-
-
-#callbacks para salvar o modelo ou parar se não melhorar
-
+# Callbacks
 callbacks = [
     ModelCheckpoint(
         filepath='sequential_2.keras',
@@ -160,57 +142,66 @@ callbacks = [
     )
 ]
 
-
+# Treinamento do modelo
 try:
     history = model.fit(
         train_generator,
-        steps_per_epoch = num_train_samples // BATCH_SIZE,
+        steps_per_epoch=num_train_samples // BATCH_SIZE,
         epochs=EPOCHS,
-        validation_data = validation_generator,
-        validation_steps = num_validation_samples // BATCH_SIZE,
-        callbacks = callbacks,
-        verbose = 1
-
+        validation_data=validation_generator,
+        validation_steps=num_validation_samples // BATCH_SIZE,
+        callbacks=callbacks,
+        verbose=1
     )
+    print('Treinamento concluído com sucesso!')
+except Exception as e:
+    print(f"Erro no treinamento: {e}")
 
-    print('Treinamento concluido')
-
-    # Avaliação do modelo
-    # Carregar o melhor modelo salvo
+# Avaliação do modelo
+try:
     best_model = load_model('sequential_2.keras')
 
+    # Reset do generator antes de avaliar ou prever
+    test_generator.reset()
 
-    # Avaliar no conjunto de teste
     test_loss, test_accuracy = best_model.evaluate(test_generator)
     print(f'Acurácia no conjunto de teste: {test_accuracy:.4f}')
-    print(f'Loss no conjunto de teste: {test_loss}')
+    print(f'Loss no conjunto de teste: {test_loss:.4f}')
+except Exception as e:
+    print(f"Erro na avaliação do modelo: {e}")
 
-    # Visualizar métricas do treinamento
+# Gráficos de desempenho
+try:
     plt.figure(figsize=(16, 6))
 
-    # Plot da acurácia
+    # Acurácia
     plt.subplot(1, 2, 1)
     plt.plot(history.history['accuracy'], label='Treino')
     plt.plot(history.history['val_accuracy'], label='Validação')
     plt.title('Acurácia do Modelo')
-    plt.ylabel('Acurácia')
     plt.xlabel('Época')
+    plt.ylabel('Acurácia')
     plt.legend()
 
-    # Plot da perda
+    # Perda
     plt.subplot(1, 2, 2)
     plt.plot(history.history['loss'], label='Treino')
     plt.plot(history.history['val_loss'], label='Validação')
     plt.title('Perda do Modelo')
-    plt.ylabel('Perda')
     plt.xlabel('Época')
+    plt.ylabel('Perda')
     plt.legend()
 
     plt.tight_layout()
     plt.show()
+except Exception as e:
+    print(f"Erro ao gerar gráficos: {e}")
 
-    # Gerar matriz de confusão
-    Y_pred = best_model.predict(test_generator)
+# Matriz de confusão e relatório
+try:
+    test_generator.reset()
+
+    Y_pred = best_model.predict(test_generator, verbose=1)
     y_pred = np.argmax(Y_pred, axis=1)
 
     cm = confusion_matrix(test_generator.classes, y_pred)
@@ -222,9 +213,7 @@ try:
     plt.xlabel('Classe Prevista')
     plt.show()
 
-    # Imprimir relatório de classificação
     print("Relatório de Classificação:")
     print(classification_report(test_generator.classes, y_pred, target_names=classes))
-
 except Exception as e:
-    print(f"Erro durante o treinamento ou avaliação: {e}")
+    print(f"Erro ao gerar relatório de classificação: {e}")
