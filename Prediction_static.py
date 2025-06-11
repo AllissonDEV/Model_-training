@@ -3,11 +3,11 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.applications.inception_resnet_v2 import preprocess_input
 import numpy as np
 
-model = load_model('sequential_2.keras')
-classes = ['A', 'B', 'C', 'D', 'E', ...]  # sua lista de classes
-IMG_SIZE = (128, 128)
+model = load_model('sequential_1.1.keras')
+classes = ['A', 'B', 'C','D','E','I','L','M','N','O','R','S','U','V','W']  # sua lista de classes
+IMG_SIZE = (224, 224)
 
-img_path = 'caminho/para/imagem.jpg'
+img_path = r"C:\Users\Allisson\Desktop\libras-maos.png"
 img = image.load_img(img_path, target_size=IMG_SIZE)
 img_array = image.img_to_array(img)
 img_array = preprocess_input(img_array)

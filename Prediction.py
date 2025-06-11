@@ -1,72 +1,99 @@
 import cv2
-import mediapipe as mp
-import tensorflow as tf
 import numpy as np
+import mediapipe as mp
+from tensorflow.keras.models import load_model
+from tensorflow.keras.applications.efficientnet import preprocess_input
+import os
 
-MODEL_PATH = ...
-with open('labels.txt', 'r') as file:
-    CLASS_NAMES = [line.strip() for line in file.readlines()]
 
-hand_modulo = mp.solutions.hands
+# Carregar modelo treinado
+model = load_model("efficient_fold2Melhor.keras")
+IMG_SIZE = (224, 224)
 
-hands = hand_modulo.Hands(
-    static_image_mode=False,
-    max_num_hands=1,
-    min_detection_confidence=0.7,
-    min_tracking_confidence=0.7
-)
+# Mapeamento dos índices para classes
+class_names = ['A', 'B', 'C','D','E','I','L','M','N','O','R','S','U','V','W']
 
-mp_draw = mp.solutions.drawing_utils
+# Inicializar MediaPipe Hands
+mp_hands = mp.solutions.hands
+mp_drawing = mp.solutions.drawing_utils
+hands = mp_hands.Hands(static_image_mode=False, max_num_hands=1)
 
-model = tf.keras.models.load_model(MODEL_PATH, compile=False)
 
-def process_frame(frame):
-    frameRGB = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    results = hands.process(frameRGB)
-
-    if results.multi_hand_landmarks:
-        for hand in results.multi_hand_landmarks:
-            mp_draw.draw_landmarks(frame, hand, hand_modulo.HAND_CONNECTIONS)
-            x_max, y_max = 0, 0
-            x_min, y_min = frame.shape[1], frame.shape[0]
-
-            for lm in hand.landmark:
-                x, y = int(lm.x * frame.shape[1]), int(lm.y * frame.shape[0])
-                x_max, x_min = max(x, x_max), min(x, x_min)
-                y_max, y_min = max(y, y_max), min(y, y_min)
-
-            margin = 50
-            x_min, y_min = max(0, x_min - margin), max(0, y_min - margin)
-            x_max, y_max = min(frame.shape[1], x_max + margin), min(frame.shape[0], y_max + margin)
-            img_crop = frame[y_min:y_max, x_min:x_max]
-
-            if img_crop.size == 0:
-                continue
-
-            cv2.imshow("Recorte", img_crop)
-            img_crop = cv2.resize(img_crop, (224, 224))
-            img_array = np.asarray(img_crop, dtype=np.float32)
-            normalized_image = (img_array / 127.0) - 1
-            data = np.expand_dims(normalized_image, axis=0)
-            prediction = model.predict(data, verbose=0)
-            return CLASS_NAMES[np.argmax(prediction)]
-    return None
-
+# Iniciar câmera
 cap = cv2.VideoCapture(0)
 
-while cap.isOpened():
-    success, img = cap.read()
-    if not success:
+while True:
+    ret, frame = cap.read()
+    if not ret:
         break
 
-    result = process_frame(img)
-    if result:
-        cv2.putText(img, result, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 3)
+    # Flip horizontal para simular espelho
+    frame = cv2.flip(frame, 1)
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-    cv2.imshow("Webcam", img)
+    # Detectar mãos
+    results = hands.process(frame_rgb)
 
-    if cv2.waitKey(1) & 0xFF == ord('esc'):
+    if results.multi_hand_landmarks:
+        for hand_landmarks in results.multi_hand_landmarks:
+            # Obter bounding box da mão
+            h, w, _ = frame.shape
+            x_min = w
+            y_min = h
+            x_max = y_max = 0
+            for lm in hand_landmarks.landmark:
+                x, y = int(lm.x * w), int(lm.y * h)
+                x_min = min(x, x_min)
+                y_min = min(y, y_min)
+                x_max = max(x, x_max)
+                y_max = max(y, y_max)
+
+            # Adicionar margem
+            margin = 30
+            x_min = max(0, x_min - margin)
+            y_min = max(0, y_min - margin)
+            x_max = min(w, x_max + margin)
+            y_max = min(h, y_max + margin)
+
+            # Extrair ROI (Região de Interesse)
+            roi = frame[y_min:y_max, x_min:x_max]
+
+            if roi.size == 0 or roi.shape[0] < 10 or roi.shape[1] < 10:
+                continue
+
+
+
+            # Preprocessar ROI
+            roi_resized = cv2.resize(roi, IMG_SIZE)
+            roi_preprocessed = preprocess_input(roi_resized.astype(np.float32))
+            roi_input = np.expand_dims(roi_preprocessed, axis=0)
+            cv2.imshow("Recorte", roi_resized)
+
+            # Predição
+            try:
+                prediction = model.predict(roi_input)
+                class_index = np.argmax(prediction)
+                class_label = class_names[class_index]
+                confidence = prediction[0][class_index]
+            except:
+                continue
+
+            # Exibir resultado
+            cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
+            cv2.putText(frame, f"{class_label} ({confidence:.2f})", (x_min, y_min - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+
+            # Desenhar landmarks
+            mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+
+    # Mostrar imagem
+    cv2.imshow("Reconhecimento LIBRAS em Tempo Real", frame)
+
+    # Tecla 'q' para sair
+    if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
+# Encerrar
 cap.release()
 cv2.destroyAllWindows()
+hands.close()
